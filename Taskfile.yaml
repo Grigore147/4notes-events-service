@@ -1,0 +1,200 @@
+version: 3
+
+silent: true
+
+env:
+  CI_PROJECT_NAME: 4notes
+  CI_PROJECT_KEY: notes
+  CI_PROJECT_DOMAIN: events.4notes.app
+  CI_SERVICE_NAME: 4notes-events-service
+  CI_SERVICE_IMAGE_REPOSITORY_URL: docker.io/services
+  CI_SERVICE_URL_TYPE: 'path'
+
+tasks:
+  default:
+    desc: 4Notes Events Service
+    cmds:
+      - |
+        source ./docker/scripts/utils.sh
+        print_info "Available tasks:"
+        print_info "start - Start local development server"
+        print_info ""
+        print_info "docker:login         - Logging in to Docker Hub"
+        print_info "docker:login-ecr     - Docker Login to Amazon ECR"
+        print_info "docker:build-preview - Preview Docker Build Environment"
+        print_info "docker:build         - Build Docker Image"
+        print_info "docker:build-push    - Build and Push Docker Images"
+        print_info ""
+        print_info "docker-compose         - Docker Compose commands"
+        print_info "docker-compose:start   - Start local development server with Docker Compose"
+        print_info "docker-compose:restart - Restart local development server with Docker Compose"
+        print_info "docker-compose:stop    - Stop local development server with Docker Compose"
+        print_info "docker-compose:down    - Stop and remove containers, networks, volumes created by Docker Compose"
+        print_info "docker-compose:build   - Build Docker Compose services"
+        print_info "docker-compose:logs    - Show logs of containers created by Docker Compose"
+        print_info ""
+        print_info "service              - Run a command within the service container"
+        print_info "service:get-metadata - Get Service Metadata for current environment (JSON)"
+        print_info "service:get-environment - Get Service Environment Metadata for current environment as JSON"
+        print_info "service:run          - Run the service locally using Docker"
+        print_info "service:run-build    - Build image for current branch and run the service locally using Docker"
+        print_info "service:test         - Run tests in the service container"
+        print_info ""
+
+  start:
+    desc: Start local development server
+    cmds:
+      - npm run start:dev -- -b swc
+
+  
+  docker:login:
+    desc: Logging in to Docker Hub
+    requires:
+      vars: [DOCKER_HUB_USERNAME, DOCKER_HUB_PASSWORD]
+    cmds:
+      - echo "◈ Logging in to Docker Hub Registry"
+      - docker login -u $DOCKER_HUB_USERNAME -p $DOCKER_HUB_PASSWORD
+
+  docker:login-ecr:
+    desc: Docker Login to Amazon ECR
+    requires:
+      vars: [AWS_ECR_ACCOUNT_ID, AWS_ECR_REGION]
+    cmds:
+      - echo "◈ Logging in to Amazon ECR"
+      - |
+        aws ecr get-login-password --region $AWS_ECR_REGION | \
+        docker login --username AWS --password-stdin $AWS_ECR_ACCOUNT_ID.dkr.ecr.$AWS_ECR_REGION.amazonaws.com
+
+  docker:build-preview:
+    desc: Preview Docker Build Environment
+    required:
+      vars: [CI_SERVICE_IMAGE_REPOSITORY_URL]
+    cmds:
+      - echo "◈ Preview Docker Build Environment"
+      - ./docker/scripts/cicd-entrypoint.sh
+
+  docker:build:
+    desc: Build Docker Images
+    required:
+      vars: [CI_SERVICE_IMAGE_REPOSITORY_URL]
+    cmds:
+      - echo "◈ Building Docker Image"
+      - |
+        # IMPORTANT: We have to source scripts in a non-interactive sub-shell to avoid "unbound variable" errors
+        bash -c "source ./docker/scripts/cicd-entrypoint.sh && ./docker/scripts/docker-build.sh"
+  
+  docker:build-push:
+    desc: Build and Push Docker Images
+    required:
+      vars: [CI_SERVICE_IMAGE_REPOSITORY_URL]
+    cmds:
+      - echo "◈ Building Docker Image and pushing to the registry..."
+      - |
+        bash -c "source ./docker/scripts/cicd-entrypoint.sh && ./docker/scripts/docker-build.sh --push"
+
+
+  # Example: task docker-compose -- build
+  docker-compose:
+    desc: Docker Compose commands
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          {{.CLI_ARGS}}
+
+  docker-compose:start:
+    desc: Start local development server with Docker Compose
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          up --detach --remove-orphans
+  
+  docker-compose:restart:
+    desc: Restart local development server with Docker Compose
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          restart
+
+  docker-compose:stop:
+    desc: Stop local development server with Docker Compose
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          stop
+
+  docker-compose:down:
+    desc: Stop and remove containers, networks, volumes created by Docker Compose
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          down
+  
+  docker-compose:build:
+    desc: Build Docker Compose services
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          build
+  
+  docker-compose:logs:
+    desc: Show logs of containers created by Docker Compose
+    cmds:
+      - |
+        docker-compose \
+          --file ./docker/docker-compose.yaml \
+          --env-file ./docker/docker-compose.env \
+          --project-directory ./ \
+          logs -f
+
+
+  service:get-metadata:
+    desc: Get Service Metadata
+    cmds:
+      - ./docker/scripts/get-service-metadata.sh
+
+  service:get-environment:
+    desc: Get Service Environment Metadata as JSON
+    cmds:
+      - ./docker/scripts/get-service-environment.sh
+
+  service:run:
+    desc: Run the service locally
+    description: Run the service locally using Docker
+    cmds:
+      - task: docker-compose:start
+      - |
+        # SERVICE_IMAGE=$(./docker/scripts/cicd-entrypoint.sh | grep -E 'SERVICE\ IMAGE:' | awk -F': +' '{print $2}')
+        # docker run --rm --name 4notes-events-service -p 8080:8080 $SERVICE_IMAGE
+  
+  service:run-build:
+    desc: Build image and run the service locally
+    description: Build image for current branch and run the service locally using Docker
+    cmds:
+      - task: docker-compose:build
+      - task: docker-compose:start
+
+  service:
+    desc: Run a command within the service container
+    cmds:
+      - |
+        SERVICE_CONTAINER_ID=$(docker ps --filter "name=4notes-events-service" --format json | jq -r .ID)
+
+        docker exec ${SERVICE_CONTAINER_ID} {{.CLI_ARGS}}
